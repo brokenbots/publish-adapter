@@ -41,7 +41,7 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       # 3. Publish the pre-built binary.
-      - uses: brokenbots/publish-adapter@v1
+      - uses: brokenbots/publish-adapter@v0
         with:
           binary: out/adapter
           registry: ghcr.io/${{ github.repository_owner }}/my-adapter:${{ github.ref_name }}
