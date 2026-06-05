@@ -1,0 +1,64 @@
+name: Publish Criteria adapter
+description: >
+  Publish a PRE-BUILT Criteria adapter binary as a signed OCI artifact
+  (manifest emit -> OCI artifact construction -> cosign signature -> push).
+  Building the adapter binary is the adapter's own job (toolchain-specific);
+  this action only performs the publish steps.
+
+inputs:
+  binary:
+    description: Path to the pre-built adapter binary (your adapter's CI builds this).
+    required: true
+  registry:
+    description: Fully-qualified target OCI reference, e.g. ghcr.io/org/name:1.2.3
+    required: true
+  sign-key:
+    description: >
+      Optional path to a PEM Ed25519 cosign signing key. When set, the published
+      artifact is signed and the signature is attached as an OCI referrer.
+    required: false
+    default: ""
+  criteria-ref:
+    description: >
+      Git ref of brokenbots/criteria to build the `criteria` CLI from.
+      TEMPORARY: the CLI is built from source until the v2 release ships. After
+      v2 is tagged, switch to downloading a pinned release binary instead — see
+      the "Switching to a released CLI" section in the README.
+    required: false
+    default: adapter-v2
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: stable
+
+    # TEMPORARY (build-from-source): see action input `criteria-ref` and the
+    # README. Replace this whole step with a release-binary download once the
+    # criteria v2 release publishes CLI artifacts.
+    - name: Build criteria CLI from source
+      shell: bash
+      run: |
+        set -euo pipefail
+        work="$(mktemp -d)"
+        git clone --depth 1 --branch "${{ inputs.criteria-ref }}" \
+          https://github.com/brokenbots/criteria.git "$work/criteria"
+        mkdir -p "$GITHUB_WORKSPACE/.criteria-bin"
+        ( cd "$work/criteria" && go build -o "$GITHUB_WORKSPACE/.criteria-bin/criteria" ./cmd/criteria )
+        echo "$GITHUB_WORKSPACE/.criteria-bin" >> "$GITHUB_PATH"
+
+    - name: Publish adapter
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ ! -f "${{ inputs.binary }}" ]; then
+          echo "::error::adapter binary not found at '${{ inputs.binary }}' — build it before calling this action" >&2
+          exit 1
+        fi
+        args=(adapter publish "${{ inputs.binary }}" --registry "${{ inputs.registry }}")
+        if [ -n "${{ inputs.sign-key }}" ]; then
+          args+=(--sign-key "${{ inputs.sign-key }}")
+        fi
+        criteria "${args[@]}"

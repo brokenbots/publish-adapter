@@ -1,0 +1,49 @@
+name: Self-test
+
+# Exercises the action end-to-end: build a fixture adapter (the adapter's own
+# build step), then publish it via this action to GHCR. Proves the publish path
+# (CLI build-from-source -> --emit-manifest -> OCI push) works.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  publish-fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      # The fixture's build is the "adapter's own build" — NOT part of the action.
+      - name: Build fixture adapter (noop) from criteria
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          git clone --depth 1 --branch adapter-v2 https://github.com/brokenbots/criteria.git "$work/criteria"
+          ( cd "$work/criteria" && go build -o "$GITHUB_WORKSPACE/noop-adapter" ./internal/adapter/conformance/testdata/noop )
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Publish the fixture via the action
+        uses: ./
+        with:
+          binary: ${{ github.workspace }}/noop-adapter
+          registry: ghcr.io/${{ github.repository_owner }}/criteria-adapter-selftest:run-${{ github.run_id }}
+
+      # Confirm the artifact is retrievable from the registry.
+      - name: Verify the artifact was pushed
+        run: |
+          set -euo pipefail
+          criteria adapter pull "ghcr.io/${{ github.repository_owner }}/criteria-adapter-selftest:run-${{ github.run_id }}" --allow-unsigned
