@@ -7,7 +7,12 @@ description: >
 
 inputs:
   binary:
-    description: Path to the pre-built adapter binary (your adapter's CI builds this).
+    description: >
+      Path to the pre-built adapter artifact your CI produced. Either a single
+      binary (single-platform publish) OR a directory laid out as
+      bin/<os>/<arch>/<binary> for a multi-platform publish (one OCI artifact
+      with a binary layer per platform). For multi-platform, include the publish
+      runner's own platform (e.g. linux/amd64) so the manifest can be emitted.
     required: true
   registry:
     description: Fully-qualified target OCI reference, e.g. ghcr.io/org/name:1.2.3
@@ -70,8 +75,11 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        if [ ! -f "${{ inputs.binary }}" ]; then
-          echo "::error::adapter binary not found at '${{ inputs.binary }}' — build it before calling this action" >&2
+        # Accept either a single binary (file) or a multi-platform bin tree
+        # (directory of bin/<os>/<arch>/<binary>); `criteria adapter publish`
+        # handles both.
+        if [ ! -e "${{ inputs.binary }}" ]; then
+          echo "::error::adapter artifact not found at '${{ inputs.binary }}' — build it before calling this action" >&2
           exit 1
         fi
         args=(adapter publish "${{ inputs.binary }}" --registry "${{ inputs.registry }}")
