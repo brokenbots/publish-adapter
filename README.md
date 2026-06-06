@@ -40,12 +40,14 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      # 3. Publish the pre-built binary.
+      # 3. Publish the pre-built binary. Signs keyless by default (id-token: write).
       - uses: brokenbots/publish-adapter@v0
         with:
           binary: out/adapter
           registry: ghcr.io/${{ github.repository_owner }}/my-adapter:${{ github.ref_name }}
-          sign-key: ${{ runner.temp }}/cosign.key   # optional
+          # keyless: "true"   # default; set "false" to publish unsigned
+          # sign-key: ...      # optional: explicit-key signing instead of keyless
+          # image: ...         # optional: record an already-pushed runnable image
 ```
 
 ### Inputs
@@ -54,8 +56,20 @@ jobs:
 |---|---|---|
 | `binary` | yes | Path to the pre-built adapter binary. |
 | `registry` | yes | Fully-qualified OCI reference, e.g. `ghcr.io/org/name:1.2.3`. |
-| `sign-key` | no | Path to a PEM Ed25519 cosign key. When set, the artifact is signed. |
+| `keyless` | no | Sign keyless via Sigstore Fulcio using the workflow's ambient OIDC identity. **Default `true`** — requires `id-token: write`. Set `"false"` to publish unsigned. |
+| `sign-key` | no | Path to a PEM Ed25519 cosign key. When set, signs with that explicit key instead of keyless. |
+| `image` | no | Reference of an already-built, already-pushed runnable container image to record in the manifest (e.g. `ghcr.io/org/name:1.2.3-image`). The adapter's CI builds + pushes it; this action records the resolved digest. Default: artifact-only. |
 | `criteria-ref` | no | Git ref of `brokenbots/criteria` used to build the CLI (default `adapter-v2`). See below. |
+
+## Signing
+
+By default (`keyless: true`) the action signs the artifact **keyless** via
+Sigstore — the workflow's GitHub OIDC identity is certified by Fulcio and the
+cosign signature is attached as an OCI referrer. This needs `id-token: write` on
+the job (the starter templates already grant it). Power users who manage their
+own keys can set `sign-key` instead; it takes precedence over keyless. Set
+`keyless: "false"` with no `sign-key` to publish an unsigned artifact (not
+recommended outside local experiments).
 
 ## Switching to a released CLI (do this after the v2 release)
 

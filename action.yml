@@ -15,7 +15,24 @@ inputs:
   sign-key:
     description: >
       Optional path to a PEM Ed25519 cosign signing key. When set, the published
-      artifact is signed and the signature is attached as an OCI referrer.
+      artifact is signed with that explicit key and the signature is attached as
+      an OCI referrer. Mutually exclusive with keyless (takes precedence).
+    required: false
+    default: ""
+  keyless:
+    description: >
+      Sign keyless via Sigstore Fulcio using the workflow's ambient OIDC identity
+      (the default signing path — requires `id-token: write`). Ignored when
+      sign-key is set. Set to "false" to publish unsigned.
+    required: false
+    default: "true"
+  image:
+    description: >
+      Optional reference of an already-built, already-pushed runnable container
+      image to record in the manifest (e.g. ghcr.io/org/name:1.2.3-image). The
+      adapter's own CI builds and pushes the image (its Dockerfile); this action
+      only records the resolved digest so the host can run it under
+      environment.runtime. Default: artifact-only, no image.
     required: false
     default: ""
   criteria-ref:
@@ -59,6 +76,13 @@ runs:
         fi
         args=(adapter publish "${{ inputs.binary }}" --registry "${{ inputs.registry }}")
         if [ -n "${{ inputs.sign-key }}" ]; then
+          # Explicit-key signing takes precedence over keyless.
           args+=(--sign-key "${{ inputs.sign-key }}")
+        elif [ "${{ inputs.keyless }}" = "true" ]; then
+          # Default: keyless signing via the workflow's ambient OIDC identity.
+          args+=(--keyless)
+        fi
+        if [ -n "${{ inputs.image }}" ]; then
+          args+=(--image "${{ inputs.image }}")
         fi
         criteria "${args[@]}"
